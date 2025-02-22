@@ -1,0 +1,2 @@
+# disables codebase indexing only
+*.secret.*

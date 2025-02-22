@@ -1,5 +1,5 @@
 ---
 description: 
-globs: 
+globs: *.*
 ---
 I am very new to Rust.
