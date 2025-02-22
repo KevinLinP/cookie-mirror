@@ -1,42 +1,44 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder, cookie::{Cookie, SameSite}};
+use actix_web::{cookie::{Cookie, SameSite}, get, post, web, App, HttpResponse, HttpServer, Result, HttpRequest};
 
-#[path = "config.secret.rs"]
-mod config;
+#[post("/{cookie_name}")]
+async fn set_cookie(
+    path: web::Path<String>,
+    request_body: String,
+) -> Result<HttpResponse> {
+    let cookie_name = path.into_inner();
+    let cookie_value = request_body;
 
-pub const COOKIE_NAME: &str = "auth_cookie";
+    let cookie = Cookie::build(cookie_name, cookie_value)
+        .secure(true)
+        .http_only(true)
+        .same_site(SameSite::Strict)
+        .finish();
 
-async fn get_keys(req: actix_web::HttpRequest) -> impl Responder {
-    if let Some(cookie) = req.cookie(COOKIE_NAME) {
-        if cookie.value() == config::REQUIRED_COOKIE_VALUE {
-            HttpResponse::Ok().json(config::keys())
-        } else {
-            HttpResponse::Unauthorized().finish()
-        }
-    } else {
-        HttpResponse::Unauthorized().finish()
-    }
+    Ok(HttpResponse::Ok()
+        .cookie(cookie)
+        .finish())
 }
 
-async fn set_auth_cookie(body: String) -> impl Responder {
-    let cookie = Cookie::build(COOKIE_NAME, body)
-    .secure(true)
-    .http_only(true)
-    .same_site(SameSite::Strict)
-    .finish();
-
-    HttpResponse::Ok()
-        .cookie(cookie)
-        .finish()
+#[get("/{cookie_name}")]
+async fn replay_cookie(
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let cookie_name = path.into_inner();
+    
+    match req.cookie(&cookie_name) {
+        Some(cookie) => Ok(HttpResponse::Ok().body(cookie.value().to_string())),
+        #[allow(non_snake_case)]
+        None => Ok(HttpResponse::NotFound().finish())
+    }
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
-        App::new()
-            .route("/set_auth_cookie", web::post().to(set_auth_cookie))
-            .route("/", web::get().to(get_keys))
-    })
-    .bind(("0.0.0.0", 1317))? // Bind to all interfaces
-    .run()
-    .await
+    HttpServer::new(|| App::new()
+        .service(set_cookie)
+        .service(replay_cookie))
+        .bind(("0.0.0.0", 1317))? // Bind to all interfaces
+        .run()
+        .await
 }
